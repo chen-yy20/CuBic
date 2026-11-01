@@ -1,0 +1,659 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CUBIC: Curvature-Driven Dynamic Inference Caching for Flow Matching</title>
+<meta name="description" content="CUBIC is a training-free, curvature-driven caching framework that accelerates Flow Matching image and video generation by ~2.5x with high fidelity. NeurIPS 2026.">
+<meta property="og:title" content="CUBIC: Curvature-Driven Dynamic Inference Caching for Fast, High-Fidelity Flow Matching">
+<meta property="og:description" content="Training-free, curvature-driven caching for Flow Matching. NeurIPS 2026.">
+<meta property="og:image" content="assets/tradeoff.png">
+<style>
+  :root {
+    --fg: #1d2330;
+    --muted: #5b6475;
+    --accent: #6d28d9;
+    --accent-soft: #f2ecfd;
+    --blue: #5b21b6;
+    --line: #e5e8ee;
+    --bg-alt: #f7f8fa;
+    --radius: 10px;
+    --max: 1040px;
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    font: 17px/1.65 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+    color: var(--fg);
+    background: #fff;
+  }
+  a { color: var(--blue); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  img { max-width: 100%; display: block; }
+  .wrap { max-width: var(--max); margin: 0 auto; padding: 0 24px; }
+  section { padding: 56px 0; }
+  section.alt { background: var(--bg-alt); }
+  h2 {
+    font-size: 1.7rem;
+    margin: 0 0 20px;
+    letter-spacing: -0.01em;
+  }
+  h3 { font-size: 1.15rem; margin: 28px 0 10px; }
+  p { margin: 0 0 14px; }
+  .lead { color: var(--muted); max-width: 820px; }
+  .sc { font-variant: small-caps; letter-spacing: 0.02em; }
+
+  header.hero { padding: 64px 0 28px; text-align: center; }
+  .venue {
+    display: inline-block;
+    padding: 4px 14px;
+    border-radius: 999px;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-weight: 600;
+    font-size: 0.9rem;
+    margin-bottom: 18px;
+  }
+  .hero h1 {
+    font-size: clamp(1.8rem, 4vw, 2.7rem);
+    line-height: 1.2;
+    margin: 0 auto 22px;
+    max-width: 900px;
+    letter-spacing: -0.02em;
+  }
+  .hero h1 .name { color: var(--accent); }
+  .authors { font-size: 1.08rem; margin-bottom: 6px; }
+  .authors span { margin: 0 10px; white-space: nowrap; }
+  .affils { color: var(--muted); font-size: 0.95rem; margin-bottom: 24px; }
+  .affils span { margin: 0 8px; white-space: nowrap; }
+  .buttons { display: flex; gap: 12px; justify-content: center; flex-wrap: wrap; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 10px 20px;
+    border-radius: 999px;
+    background: var(--fg);
+    color: #fff;
+    font-weight: 600;
+    font-size: 0.95rem;
+  }
+  .btn:hover { background: #000; text-decoration: none; }
+  .btn.ghost { background: #fff; color: var(--fg); border: 1.5px solid var(--fg); }
+  .btn svg { width: 18px; height: 18px; fill: currentColor; }
+
+  figure { margin: 0; }
+  figcaption { color: var(--muted); font-size: 0.92rem; margin-top: 10px; text-align: center; }
+  .card {
+    background: #fff;
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 18px;
+  }
+
+  .stats {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 14px;
+    margin-top: 28px;
+  }
+  .stat { text-align: center; padding: 18px 10px; }
+  .stat b { display: block; font-size: 1.9rem; color: var(--accent); line-height: 1.1; }
+  .stat span { color: var(--muted); font-size: 0.9rem; }
+
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  .points { display: grid; grid-template-columns: repeat(3, 1fr); gap: 16px; margin-top: 24px; }
+  .point h4 { margin: 0 0 6px; font-size: 1.02rem; }
+  .point p { margin: 0; color: var(--muted); font-size: 0.95rem; }
+  .point .tag {
+    display: inline-block; font-size: 0.75rem; font-weight: 700;
+    color: var(--blue); letter-spacing: 0.06em; text-transform: uppercase; margin-bottom: 6px;
+  }
+  .formula {
+    font-family: "Cambria Math", "STIX Two Math", Georgia, serif;
+    font-size: 1.25rem;
+    text-align: center;
+    padding: 14px;
+    margin: 18px auto;
+    max-width: 520px;
+    background: var(--bg-alt);
+    border-radius: var(--radius);
+  }
+
+  .tabs { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 16px; }
+  .tab {
+    border: 1.5px solid var(--line);
+    background: #fff;
+    border-radius: 999px;
+    padding: 7px 16px;
+    font: inherit;
+    font-size: 0.92rem;
+    cursor: pointer;
+    color: var(--fg);
+  }
+  .tab.active { border-color: var(--fg); background: var(--fg); color: #fff; }
+  .panel { display: none; }
+  .panel.active { display: block; }
+
+  .table-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 0.93rem; }
+  th, td { padding: 8px 10px; text-align: center; border-bottom: 1px solid var(--line); white-space: nowrap; }
+  th { font-weight: 600; color: var(--muted); border-bottom: 2px solid var(--fg); }
+  td:first-child, th:first-child { text-align: left; }
+  tr.ours td { background: var(--accent-soft); }
+  tr.ours td:first-child { font-weight: 700; color: var(--accent); }
+  td b { color: var(--fg); }
+
+  pre {
+    background: #1d2330;
+    color: #e8ebf1;
+    padding: 18px 20px;
+    border-radius: var(--radius);
+    overflow-x: auto;
+    font-size: 0.86rem;
+    line-height: 1.55;
+    margin: 0;
+  }
+  .bib { position: relative; }
+  .copy {
+    position: absolute; top: 10px; right: 10px;
+    background: rgba(255,255,255,0.12); color: #fff;
+    border: 0; border-radius: 6px; padding: 5px 10px; cursor: pointer; font-size: 0.8rem;
+  }
+  .copy:hover { background: rgba(255,255,255,0.22); }
+
+  .vid-head, .vid-row .labels {
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;
+    text-align: center; font-size: 0.9rem; font-weight: 600;
+  }
+  .vid-head { margin-bottom: 8px; color: var(--muted); }
+  .vid-head .ours { color: var(--accent); }
+  .vid-list { display: grid; gap: 22px; }
+  .vid-row video { width: 100%; display: block; border-radius: 6px; background: #000; }
+  .vid-row .prompt { font-size: 0.9rem; color: var(--fg); margin: 0 0 8px; }
+  .vid-row .prompt i { color: var(--muted); }
+  .vid-row .labels { margin-top: 6px; font-weight: 400; color: var(--muted); font-size: 0.85rem; }
+  .vid-row .labels .ours { color: var(--accent); font-weight: 600; }
+
+  .explore-head { display: flex; justify-content: space-between; align-items: center; gap: 16px; flex-wrap: wrap; }
+  .explore { display: grid; grid-template-columns: 1.05fr 1fr; gap: 18px; margin-top: 18px; }
+  .chart-card { padding: 12px 14px 14px; }
+  #chart { width: 100%; height: auto; display: block; }
+  #chart .axis { stroke: #c9ced8; stroke-width: 1; }
+  #chart .grid { stroke: #eef0f4; stroke-width: 1; }
+  #chart text { font-size: 12px; fill: var(--muted); font-family: inherit; }
+  #chart .ttl { font-size: 13px; fill: var(--fg); font-weight: 600; }
+  #chart .pt { cursor: pointer; transition: r .12s; }
+  #chart .pt:hover, #chart .pt.sel { stroke: var(--fg); stroke-width: 2.5; }
+  #chart .ring { fill: none; stroke: var(--fg); stroke-width: 1.5; stroke-dasharray: 3 3; pointer-events: none; }
+  .legend { display: flex; flex-wrap: wrap; gap: 6px 14px; justify-content: center; font-size: 0.85rem; color: var(--muted); }
+  .legend span { display: inline-flex; align-items: center; gap: 6px; }
+  .legend i { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+  .legend .ours { color: var(--accent); font-weight: 700; }
+  .preview { display: flex; flex-direction: column; gap: 12px; }
+  .pv-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .pv-grid figcaption { margin-top: 6px; font-size: 0.85rem; }
+  #pv-name { color: var(--fg); font-weight: 600; }
+  .pv-media { aspect-ratio: 1 / 1; background: var(--bg-alt); border-radius: 8px; overflow: hidden; }
+  .pv-media.video { aspect-ratio: 832 / 480; }
+  .pv-media.edit { aspect-ratio: auto; }
+  .pv-media img, .pv-media video { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .pv-stats { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
+  .pv-stats div { background: var(--bg-alt); border-radius: 8px; padding: 8px 6px; text-align: center; }
+  .pv-stats b { display: block; font-size: 1.15rem; }
+  .pv-stats span { font-size: 0.75rem; color: var(--muted); }
+  .pv-prompt { font-size: 0.85rem; color: var(--muted); margin: 0; }
+  .note { font-size: 0.85rem; color: var(--muted); margin-top: 12px; }
+  @media (max-width: 900px) { .explore { grid-template-columns: 1fr; } }
+
+  footer { padding: 32px 0 48px; color: var(--muted); font-size: 0.88rem; text-align: center; }
+
+  @media (max-width: 820px) {
+    .stats { grid-template-columns: repeat(2, 1fr); }
+    .grid2, .points { grid-template-columns: 1fr; }
+    section { padding: 40px 0; }
+  }
+</style>
+</head>
+<body>
+
+<header class="hero">
+  <div class="wrap">
+    <div class="venue">NeurIPS 2026</div>
+    <h1><span class="name sc">Cubic</span>: Curvature-Driven Dynamic Inference Caching for Fast, High-Fidelity Flow Matching</h1>
+    <div class="authors">
+      <span>Yuyang Chen<sup>1*</sup></span>
+      <span>Linqian Zeng<sup>1*</sup></span>
+      <span>Yijin Zhou<sup>1</sup></span>
+      <span>Hengjie Li<sup>2</sup></span>
+      <span>Jidong Zhai<sup>3</sup></span>
+    </div>
+    <div class="affils">
+      <span><sup>1</sup>Shanghai Jiao Tong University</span>
+      <span><sup>2</sup>Shanghai AI Laboratory</span>
+      <span><sup>3</sup>Tsinghua University</span>
+      <span><sup>*</sup>Equal contribution</span>
+    </div>
+    <div class="buttons">
+      <span class="btn ghost" style="opacity:.55;cursor:default" title="Coming soon">
+        <svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8l-6-6zm-1 7V3.5L18.5 9H13z"/></svg>Paper (coming soon)
+      </span>
+      <a class="btn" href="https://github.com/chen-yy20/CuBic">
+        <svg viewBox="0 0 24 24"><path d="M12 .5a11.5 11.5 0 0 0-3.64 22.41c.58.1.79-.25.79-.56v-2c-3.2.7-3.88-1.37-3.88-1.37-.52-1.33-1.28-1.69-1.28-1.69-1.05-.71.08-.7.08-.7 1.16.08 1.77 1.19 1.77 1.19 1.03 1.77 2.7 1.26 3.36.96.1-.75.4-1.26.73-1.55-2.55-.29-5.24-1.28-5.24-5.68 0-1.25.45-2.28 1.19-3.08-.12-.29-.52-1.46.11-3.04 0 0 .97-.31 3.17 1.18a11 11 0 0 1 5.77 0c2.2-1.49 3.17-1.18 3.17-1.18.63 1.58.23 2.75.11 3.04.74.8 1.19 1.83 1.19 3.08 0 4.41-2.69 5.38-5.25 5.67.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.8.56A11.5 11.5 0 0 0 12 .5z"/></svg>Code
+      </a>
+      <a class="btn ghost" href="#bibtex">BibTeX</a>
+    </div>
+  </div>
+</header>
+
+<section style="padding-top: 8px;">
+  <div class="wrap">
+    <div class="explore-head">
+      <h2 style="margin:0">See the trade-off</h2>
+      <div class="tabs" id="explore-tabs" style="margin:0">
+        <button class="tab active" data-model="flux">Flux.1-dev &middot; T2I</button>
+        <button class="tab" data-model="firered">FireRed &middot; Editing</button>
+        <button class="tab" data-model="wan">Wan2.1 &middot; T2V</button>
+      </div>
+    </div>
+    <p class="lead" style="margin-top:8px">Hover over any point to see what that method actually generates at that speed. Every point is a real run of the same prompt and seed.</p>
+    <div class="explore">
+      <div class="card chart-card">
+        <svg id="chart" viewBox="0 0 560 400" role="img" aria-label="PSNR versus speedup for each caching method"></svg>
+        <div class="legend" id="legend"></div>
+      </div>
+      <div class="card preview">
+        <div class="tabs" id="pv-mode" style="margin:0">
+          <button class="tab active" data-mode="output">Output</button>
+          <button class="tab" data-mode="diff" title="Per-pixel absolute error against the uncached output, amplified 4x">Error map &times;4</button>
+        </div>
+        <div class="pv-grid">
+          <figure><div class="pv-media" id="pv-ref"></div><figcaption>Original (uncached)</figcaption></figure>
+          <figure><div class="pv-media" id="pv-sel"></div><figcaption id="pv-name"></figcaption></figure>
+        </div>
+        <div class="pv-stats" id="pv-stats"></div>
+        <p class="pv-prompt" id="pv-prompt"></p>
+      </div>
+    </div>
+    <p class="note">Single prompt and seed on one NVIDIA H20; each method's speedup is normalized by the uncached run on its own code path, and PSNR/LPIPS are measured against that uncached output. The full multi-prompt benchmark is in <a href="#results">Results</a>.</p>
+    <div class="stats">
+      <div class="card stat"><b>~2.5&times;</b><span>average end-to-end speedup</span></div>
+      <div class="card stat"><b>3</b><span>tasks: T2I, editing, T2V</span></div>
+      <div class="card stat"><b>0</b><span>training or extra forward passes</span></div>
+      <div class="card stat"><b>1</b><span>knob: target speedup</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="alt" id="abstract">
+  <div class="wrap">
+    <h2>Abstract</h2>
+    <p>Flow Matching (FM) has emerged as the dominant paradigm for state-of-the-art image and video generation, yet its reliance on full attention over lengthy sequences incurs significant latency. While existing caching methods reduce redundant computations, they yield suboptimal performance, fundamentally constrained by inflexible spatial granularity and empirical, model-specific heuristics.</p>
+    <p>To bridge this gap, we ground the caching mechanism in the geometric properties of the FM velocity field. We theoretically establish that the <b>curvature</b> inherently dictates the coupling between trajectory fluctuation and computational requirements, thereby providing a principled metric to quantify caching staleness loss and derive update intervals that minimize this loss under a compute budget.</p>
+    <p>Translating this theoretical insight into practical acceleration, we present <span class="sc">Cubic</span>, a train-free caching framework. It bypasses expensive curvature computations via a lightweight proxy signal that dynamically guides spatial partitioning and budget-constrained update scheduling. At the system level, a sparse forward engine executes these schedules efficiently, turning the reduced token computation into actual FLOP savings and near-linear speedup. Being model-agnostic and controlled by a user-specified acceleration target, <span class="sc">Cubic</span> consistently outperforms state-of-the-art caching baselines in quality at customizable acceleration ratios (averaging 2.5&times;) across Wan2.1, Flux.1, and FireRed-Image-Edit.</p>
+  </div>
+</section>
+
+<section id="motivation">
+  <div class="wrap">
+    <h2>Why Curvature?</h2>
+    <p class="lead">Different regions of the same image evolve at different rates. The subject keeps a high trajectory curvature for most of the denoising process, while the background flattens early. A uniform caching schedule therefore wastes compute on the background and under-refreshes the subject, which is where cache errors become visible.</p>
+    <figure class="card">
+      <img src="assets/motivation.jpg" alt="Subject and background regions have different curvature and cache error over denoising steps" loading="lazy">
+    </figure>
+    <figcaption>Region-mean curvature (top) and cache error (bottom) for the subject and background. Under uniform reuse, the high-curvature subject accumulates larger error and fails to converge.</figcaption>
+  </div>
+</section>
+
+<section class="alt" id="method">
+  <div class="wrap">
+    <h2>Method</h2>
+    <div class="grid2">
+      <div>
+        <h3 style="margin-top:0">From curvature to cache intervals</h3>
+        <p>Reusing a velocity computed at step <i>t<sub>k</sub></i> for an interval <i>&tau;</i> makes the cached trajectory drift away from the exact one. Under a forward-Euler abstraction, this drift is governed by the local curvature <i>&kappa;</i> of the trajectory. Minimizing the total curvature-weighted error under a fixed compute budget gives a closed-form allocation:</p>
+        <div class="formula">&tau;<sub>b</sub> &prop; &kappa;<sub>b</sub><sup>&minus;&gamma;</sup>,&nbsp;&nbsp; &gamma; = &alpha; / (&beta; + 1)</div>
+        <p>Flat blocks get long intervals and curved blocks are refreshed often. Curvature itself is estimated cheaply from the <b>endpoint drift</b> between consecutive anchor steps, without computing Jacobians.</p>
+      </div>
+      <figure class="card" style="align-self:center">
+        <img src="assets/method.png" alt="Cache error and endpoint drift along the flow-matching trajectory" loading="lazy">
+      </figure>
+    </div>
+
+    <h3>System pipeline</h3>
+    <figure class="card">
+      <img src="assets/overview.jpg" alt="CUBIC pipeline: monitor, adaptive partitioner, closed-form optimizer and step trace" loading="lazy">
+    </figure>
+    <figcaption>At each anchor step, the monitor, partitioner and optimizer produce a caching plan. Selective steps then recompute only the active blocks, giving a 2.4&times; speedup on Flux in this example.</figcaption>
+
+    <div class="points">
+      <div class="card point">
+        <div class="tag">Monitor</div>
+        <h4>Lightweight curvature proxy</h4>
+        <p>Endpoint drift reuses the latent and velocity already available at anchor steps, with about 1.6&nbsp;ms overhead versus 600&nbsp;ms for exact Jacobians.</p>
+      </div>
+      <div class="card point">
+        <div class="tag">Partitioner</div>
+        <h4>Block-wise scheduling</h4>
+        <p>Tokens are grouped into spatially coherent blocks, so neighbors that attend strongly to each other share the same cache age.</p>
+      </div>
+      <div class="card point">
+        <div class="tag">Executor</div>
+        <h4>Sparse forward with dynamic KV</h4>
+        <p>Only active blocks are recomputed; a layer-wise KV pool is refreshed in place, turning token savings into real wall-clock speedup.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<section id="results">
+  <div class="wrap">
+    <h2>Results</h2>
+    <figure class="card" style="margin-bottom:10px">
+      <img src="assets/tradeoff.png" alt="Quality-speedup trade-off of CUBIC and baselines on Flux, FireRed and Wan" loading="lazy">
+    </figure>
+    <figcaption style="margin-bottom:26px">Benchmark trade-off from the paper (NVIDIA H100, averaged over the evaluation sets): <span class="sc">Cubic</span> gives the best PSNR at every speedup.</figcaption>
+    <p class="lead">Fidelity is measured against the uncached model with the same prompt and seed. Latency is measured on NVIDIA H100. <i>std</i> and <i>fast</i> are two target-speedup settings.</p>
+
+    <div class="tabs" data-group="table">
+      <button class="tab active" data-target="t-flux">Flux.1-dev (T2I)</button>
+      <button class="tab" data-target="t-firered">FireRed (Editing)</button>
+      <button class="tab" data-target="t-wan">Wan2.1 (T2V)</button>
+    </div>
+
+    <div class="card table-wrap">
+      <div class="panel active" id="t-flux">
+        <table>
+          <tr><th>Method</th><th>Latency (s) &darr;</th><th>Speedup &uarr;</th><th>PSNR &uarr;</th><th>SSIM &uarr;</th><th>LPIPS &darr;</th><th>FID &darr;</th><th>HPSv3 &uarr;</th></tr>
+          <tr><td>Baseline</td><td>11.59</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>10.68</td></tr>
+          <tr><td>PAB</td><td>6.40</td><td>1.81&times;</td><td>20.37</td><td>0.770</td><td>0.257</td><td>77.37</td><td>10.65</td></tr>
+          <tr><td>TeaCache</td><td>6.24</td><td>1.86&times;</td><td>22.88</td><td>0.851</td><td>0.149</td><td>45.87</td><td>10.83</td></tr>
+          <tr><td>ToCa</td><td>6.39</td><td>1.81&times;</td><td>19.68</td><td>0.749</td><td>0.273</td><td>70.76</td><td>10.62</td></tr>
+          <tr><td>TaylorSeer</td><td>6.83</td><td>1.70&times;</td><td>26.29</td><td>0.892</td><td>0.099</td><td><b>26.80</b></td><td>10.82</td></tr>
+          <tr class="ours"><td>Cubic (std)</td><td>6.14</td><td>1.89&times;</td><td><b>27.78</b></td><td><b>0.900</b></td><td><b>0.095</b></td><td>27.81</td><td>10.87</td></tr>
+          <tr class="ours"><td>Cubic (fast)</td><td><b>4.82</b></td><td><b>2.40&times;</b></td><td>25.14</td><td>0.846</td><td>0.173</td><td>47.32</td><td><b>10.97</b></td></tr>
+        </table>
+      </div>
+      <div class="panel" id="t-firered">
+        <table>
+          <tr><th>Method</th><th>Latency (s) &darr;</th><th>Speedup &uarr;</th><th>PSNR &uarr;</th><th>SSIM &uarr;</th><th>LPIPS &darr;</th><th>FID &darr;</th><th>HPSv3 &uarr;</th></tr>
+          <tr><td>Baseline</td><td>39.14</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>8.17</td></tr>
+          <tr><td>PAB</td><td>23.70</td><td>1.65&times;</td><td>24.39</td><td>0.889</td><td>0.093</td><td>39.41</td><td>7.95</td></tr>
+          <tr><td>TeaCache</td><td>16.91</td><td>2.31&times;</td><td>23.80</td><td>0.896</td><td>0.100</td><td>41.03</td><td>7.83</td></tr>
+          <tr><td>ToCa</td><td>20.06</td><td>1.95&times;</td><td>21.09</td><td>0.788</td><td>0.178</td><td>67.25</td><td>7.18</td></tr>
+          <tr><td>TaylorSeer</td><td>21.04</td><td>1.86&times;</td><td>25.12</td><td>0.910</td><td>0.084</td><td>33.70</td><td><b>8.07</b></td></tr>
+          <tr class="ours"><td>Cubic (std)</td><td>18.26</td><td>2.14&times;</td><td><b>30.67</b></td><td><b>0.954</b></td><td><b>0.047</b></td><td><b>18.55</b></td><td>8.00</td></tr>
+          <tr class="ours"><td>Cubic (fast)</td><td><b>16.83</b></td><td><b>2.33&times;</b></td><td>27.81</td><td>0.920</td><td>0.091</td><td>32.18</td><td>7.90</td></tr>
+        </table>
+      </div>
+      <div class="panel" id="t-wan">
+        <table>
+          <tr><th>Method</th><th>Latency (s) &darr;</th><th>Speedup &uarr;</th><th>PSNR &uarr;</th><th>SSIM &uarr;</th><th>LPIPS &darr;</th><th>FVD &darr;</th><th>VBench &uarr;</th></tr>
+          <tr><td>Baseline</td><td>101.54</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>&ndash;</td><td>79.90</td></tr>
+          <tr><td>PAB</td><td>40.60</td><td>2.50&times;</td><td>22.36</td><td>0.800</td><td>0.167</td><td>57.78</td><td>78.41</td></tr>
+          <tr><td>TeaCache</td><td>61.44</td><td>1.65&times;</td><td>30.27</td><td>0.927</td><td>0.045</td><td>11.72</td><td>79.79</td></tr>
+          <tr><td>ToCa</td><td>44.00</td><td>2.31&times;</td><td>19.19</td><td>0.738</td><td>0.241</td><td>84.04</td><td>78.42</td></tr>
+          <tr><td>TaylorSeer</td><td>39.24</td><td>2.59&times;</td><td>15.80</td><td>0.641</td><td>0.352</td><td>137.06</td><td>78.82</td></tr>
+          <tr class="ours"><td>Cubic (std)</td><td>62.35</td><td>1.63&times;</td><td><b>32.76</b></td><td><b>0.948</b></td><td><b>0.032</b></td><td><b>7.92</b></td><td>79.37</td></tr>
+          <tr class="ours"><td>Cubic (fast)</td><td><b>37.32</b></td><td><b>2.72&times;</b></td><td>26.39</td><td>0.874</td><td>0.099</td><td>31.76</td><td><b>80.03</b></td></tr>
+        </table>
+      </div>
+    </div>
+
+    <h3>Qualitative comparison</h3>
+    <div class="tabs" data-group="qual">
+      <button class="tab active" data-target="q-flux">Flux.1-dev</button>
+      <button class="tab" data-target="q-firered">FireRed</button>
+      <button class="tab" data-target="q-wan">Wan2.1</button>
+    </div>
+    <div class="panel active" id="q-flux"><figure class="card"><img src="assets/flux_ori_cubic_comparison.jpg" alt="Flux uncached vs CUBIC" loading="lazy"></figure></div>
+    <div class="panel" id="q-firered"><figure class="card"><img src="assets/firered_ori_cubic_comparison.jpg" alt="FireRed uncached vs CUBIC" loading="lazy"></figure></div>
+    <div class="panel" id="q-wan"><figure class="card"><img src="assets/wan_ori_cubic_video_comparison.jpg" alt="Wan uncached vs CUBIC" loading="lazy"></figure></div>
+  </div>
+</section>
+
+<section class="alt" id="jano">
+  <div class="wrap">
+    <h2>Comparison with Jano</h2>
+    <p class="lead"><a href="https://arxiv.org/abs/2603.00519">Jano</a> is the closest token-level caching method. We tune <span class="sc">Cubic</span> on separate prompts and evaluate both methods on held-out prompts with Jano's official default configuration (32 Flux and 24 Wan samples on NVIDIA H20). All fidelity improvements are significant under a paired Wilcoxon test (<i>p</i> &lt; 10<sup>&minus;4</sup>).</p>
+    <div class="card table-wrap" style="margin-bottom:22px">
+      <table>
+        <tr><th>Model</th><th>Method</th><th>Speedup &uarr;</th><th>PSNR &uarr;</th><th>SSIM &uarr;</th><th>LPIPS &darr;</th></tr>
+        <tr><td>Flux.1-dev</td><td><a href="https://arxiv.org/abs/2603.00519">Jano</a></td><td>2.18&times;</td><td>21.93</td><td>0.788</td><td>0.225</td></tr>
+        <tr class="ours"><td></td><td>Cubic</td><td><b>2.43&times;</b></td><td><b>23.47</b></td><td><b>0.842</b></td><td><b>0.145</b></td></tr>
+        <tr><td>Wan2.1-1.3B</td><td><a href="https://arxiv.org/abs/2603.00519">Jano</a></td><td>2.28&times;</td><td>20.64</td><td>0.766</td><td>0.147</td></tr>
+        <tr class="ours"><td></td><td>Cubic</td><td>2.36&times;</td><td><b>23.78</b></td><td><b>0.843</b></td><td><b>0.096</b></td></tr>
+      </table>
+    </div>
+    <div class="tabs" data-group="jano">
+      <button class="tab active" data-target="j-wan">Wan2.1 videos</button>
+      <button class="tab" data-target="j-flux">Flux.1-dev images</button>
+    </div>
+    <div class="panel active" id="j-wan">
+      <div class="card">
+        <div class="vid-head"><span>Original (uncached)</span><span><a href="https://arxiv.org/abs/2603.00519">Jano</a></span><span class="ours">Cubic</span></div>
+        <div class="vid-list" id="vid-list"></div>
+      </div>
+      <figcaption>The first six held-out test prompts at seed 42, not cherry-picked. Speedup and PSNR are measured per sample against the uncached video.</figcaption>
+    </div>
+    <div class="panel" id="j-flux"><figure class="card"><img src="assets/jano_flux_comparison.jpg" alt="Flux: uncached, Jano and CUBIC" loading="lazy"></figure></div>
+  </div>
+</section>
+
+<section id="quickstart">
+  <div class="wrap">
+    <h2>Quick Start</h2>
+<pre><code>git clone https://github.com/chen-yy20/CuBic.git &amp;&amp; cd CuBic
+uv sync &amp;&amp; source .venv/bin/activate
+
+# Wan2.1 text-to-video with a target selective-phase speedup
+python launch.py --model wan --method cubic --launcher python \
+    --model-path /path/to/Wan2.1-T2V-1.3B -- --target_speedup 6</code></pre>
+    <p style="margin-top:14px">See the <a href="https://github.com/chen-yy20/CuBic#quick-start">README</a> for Flux, FireRed, baselines and evaluation scripts.</p>
+  </div>
+</section>
+
+<section class="alt" id="bibtex">
+  <div class="wrap">
+    <h2>BibTeX</h2>
+    <div class="bib">
+      <button class="copy" type="button">Copy</button>
+<pre><code id="bibtex-code">@inproceedings{chen2026cubic,
+  title     = {{CUBIC}: Curvature-Driven Dynamic Inference Caching for Fast, High-Fidelity Flow Matching},
+  author    = {Chen, Yuyang and Zeng, Linqian and Zhou, Yijin and Li, Hengjie and Zhai, Jidong},
+  booktitle = {Advances in Neural Information Processing Systems},
+  year      = {2026}
+}</code></pre>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">&copy; 2026 The <span class="sc">Cubic</span> authors.</div>
+</footer>
+
+<script src="assets/demo/data.js"></script>
+<script>
+  (function () {
+    var DATA = window.DEMO_DATA || {};
+    var COLORS = { 'ToCa': '#c98ea0', 'PAB': '#e8955a', 'TaylorSeer': '#6f9a8d', 'TeaCache': '#1f5a8a', 'Jano': '#9aa0aa', 'CUBIC': '#6d28d9' };
+    var ORDER = ['ToCa', 'PAB', 'TaylorSeer', 'TeaCache', 'Jano', 'CUBIC'];
+    var PROMPTS = {
+      flux: 'A photorealistic cute cat, wearing a simple blue shirt, standing against a clear sky background.',
+      firered: 'Edit instruction: change orange cat to a white cat, add a dog beside it, change sitting cat to standing.',
+      wan: 'A couple in formal evening wear going home get caught in a heavy downpour with umbrellas, zoom in'
+    };
+    var NS = 'http://www.w3.org/2000/svg';
+    var svg = document.getElementById('chart');
+    var W = 560, H = 400, M = { l: 52, r: 16, t: 16, b: 46 };
+    var model = 'flux', selected = null, mode = 'output';
+    var modeBar = document.getElementById('pv-mode');
+    modeBar.addEventListener('click', function (e) {
+      var tab = e.target.closest('.tab');
+      if (!tab) return;
+      modeBar.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
+      mode = tab.dataset.mode;
+      if (selected) select(selected);
+    });
+
+    function el(tag, attrs, parent) {
+      var e = document.createElementNS(NS, tag);
+      for (var k in attrs) e.setAttribute(k, attrs[k]);
+      if (parent) parent.appendChild(e);
+      return e;
+    }
+    function ticks(lo, hi, step) {
+      var out = [];
+      for (var v = Math.ceil(lo / step) * step; v <= hi + 1e-9; v += step) out.push(+v.toFixed(2));
+      return out;
+    }
+    function media(container, src, isVideo) {
+      container.innerHTML = '';
+      container.className = 'pv-media' + (isVideo ? ' video' : '');
+      container.style.aspectRatio = '';
+      var m;
+      if (isVideo) {
+        m = document.createElement('video');
+        m.muted = true; m.loop = true; m.playsInline = true; m.autoplay = true;
+        m.poster = src.replace('.mp4', '.jpg');
+        m.src = src;
+      } else {
+        m = document.createElement('img');
+        m.src = src; m.alt = '';
+        m.onload = function () { container.style.aspectRatio = m.naturalWidth + ' / ' + m.naturalHeight; };
+      }
+      container.appendChild(m);
+      return m;
+    }
+    function select(p) {
+      selected = p;
+      svg.querySelectorAll('.pt').forEach(function (c) { c.classList.toggle('sel', c.__p === p); });
+      var isVideo = model === 'wan';
+      var refEl = document.getElementById('pv-ref');
+      var cur = refEl.querySelector(isVideo ? 'video' : 'img');
+      if (!cur || cur.getAttribute('src') !== p.ref) media(refEl, p.ref, isVideo);
+      var selMedia = media(document.getElementById('pv-sel'), mode === 'diff' && p.diff ? p.diff : p.src, isVideo);
+      if (isVideo) {
+        var refVideo = refEl.querySelector('video');
+        selMedia.addEventListener('playing', function () { refVideo.currentTime = selMedia.currentTime; refVideo.play().catch(function () {}); }, { once: true });
+      }
+      var name = document.getElementById('pv-name');
+      name.textContent = (p.method === 'CUBIC' ? 'Cubic' : p.method) + ' (' + p.label + ')';
+      name.style.color = COLORS[p.method];
+      document.getElementById('pv-stats').innerHTML =
+        '<div><b>' + p.speedup.toFixed(2) + '&times;</b><span>speedup</span></div>' +
+        '<div><b>' + p.latency_s.toFixed(1) + ' s</b><span>latency</span></div>' +
+        '<div><b>' + p.psnr.toFixed(2) + '</b><span>PSNR (dB) &uarr;</span></div>' +
+        '<div><b>' + p.lpips.toFixed(3) + '</b><span>LPIPS &darr;</span></div>';
+    }
+    function draw() {
+      var pts = DATA[model] || [];
+      svg.innerHTML = '';
+      if (!pts.length) return;
+      var xs = pts.map(function (p) { return p.speedup; }), ys = pts.map(function (p) { return p.psnr; });
+      var x0 = Math.min(1, Math.floor(Math.min.apply(null, xs) * 2) / 2), x1 = Math.ceil(Math.max.apply(null, xs) * 2) / 2;
+      var y0 = Math.floor(Math.min.apply(null, ys) / 5) * 5, y1 = Math.ceil(Math.max.apply(null, ys) / 5) * 5;
+      var sx = function (v) { return M.l + (v - x0) / (x1 - x0) * (W - M.l - M.r); };
+      var sy = function (v) { return H - M.b - (v - y0) / (y1 - y0) * (H - M.t - M.b); };
+      ticks(y0, y1, 5).forEach(function (v) {
+        el('line', { x1: M.l, x2: W - M.r, y1: sy(v), y2: sy(v), class: 'grid' }, svg);
+        el('text', { x: M.l - 8, y: sy(v) + 4, 'text-anchor': 'end' }, svg).textContent = v;
+      });
+      ticks(x0, x1, 0.5).forEach(function (v) {
+        el('line', { x1: sx(v), x2: sx(v), y1: M.t, y2: H - M.b, class: 'grid' }, svg);
+        el('text', { x: sx(v), y: H - M.b + 18, 'text-anchor': 'middle' }, svg).textContent = v.toFixed(1) + '\u00d7';
+      });
+      el('line', { x1: M.l, x2: W - M.r, y1: H - M.b, y2: H - M.b, class: 'axis' }, svg);
+      el('line', { x1: M.l, x2: M.l, y1: M.t, y2: H - M.b, class: 'axis' }, svg);
+      el('text', { x: (M.l + W - M.r) / 2, y: H - 8, 'text-anchor': 'middle', class: 'ttl' }, svg).textContent = 'Speedup \u2192';
+      el('text', { x: 14, y: (M.t + H - M.b) / 2, 'text-anchor': 'middle', class: 'ttl', transform: 'rotate(-90 14 ' + (M.t + H - M.b) / 2 + ')' }, svg).textContent = 'PSNR (dB) \u2192';
+      var methods = ORDER.filter(function (m) { return pts.some(function (p) { return p.method === m; }); });
+      methods.forEach(function (m) {
+        var line = pts.filter(function (p) { return p.method === m; }).sort(function (a, b) { return a.speedup - b.speedup; });
+        var isOurs = m === 'CUBIC';
+        el('polyline', { points: line.map(function (p) { return sx(p.speedup) + ',' + sy(p.psnr); }).join(' '),
+          fill: 'none', stroke: COLORS[m], 'stroke-width': isOurs ? 3 : 2, opacity: isOurs ? 1 : 0.85 }, svg);
+      });
+      methods.forEach(function (m) {
+        pts.filter(function (p) { return p.method === m; }).forEach(function (p) {
+          var c = el('circle', { cx: sx(p.speedup), cy: sy(p.psnr), r: m === 'CUBIC' ? 7 : 6, fill: COLORS[m], class: 'pt', tabindex: 0 }, svg);
+          c.__p = p;
+          el('title', {}, c).textContent = p.method + ' ' + p.label + ': ' + p.speedup.toFixed(2) + '\u00d7, ' + p.psnr.toFixed(2) + ' dB';
+          c.addEventListener('mouseenter', function () { select(p); });
+          c.addEventListener('focus', function () { select(p); });
+          c.addEventListener('click', function () { select(p); });
+        });
+      });
+      document.getElementById('legend').innerHTML = methods.map(function (m) {
+        return '<span' + (m === 'CUBIC' ? ' class="ours"' : '') + '><i style="background:' + COLORS[m] + '"></i>' + (m === 'CUBIC' ? 'Cubic' : m) + '</span>';
+      }).join('');
+      document.getElementById('pv-prompt').textContent = PROMPTS[model];
+      modeBar.style.display = model === 'wan' ? 'none' : '';
+      if (model === 'wan') mode = 'output';
+      modeBar.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('active', t.dataset.mode === mode); });
+      document.getElementById('pv-ref').innerHTML = '';
+      var ours = pts.filter(function (p) { return p.method === 'CUBIC'; });
+      var start = ours.reduce(function (best, p) { return !best || Math.abs(p.speedup - 2.5) < Math.abs(best.speedup - 2.5) ? p : best; }, null);
+      select(start || pts[0]);
+    }
+    document.getElementById('explore-tabs').addEventListener('click', function (e) {
+      var tab = e.target.closest('.tab');
+      if (!tab) return;
+      this.querySelectorAll('.tab').forEach(function (t) { t.classList.toggle('active', t === tab); });
+      model = tab.dataset.model;
+      draw();
+    });
+    draw();
+  })();
+
+  document.querySelectorAll('.tabs[data-group]').forEach(function (group) {
+    group.addEventListener('click', function (e) {
+      var tab = e.target.closest('.tab');
+      if (!tab) return;
+      group.querySelectorAll('.tab').forEach(function (t) {
+        t.classList.remove('active');
+        var p = document.getElementById(t.dataset.target);
+        if (p) p.classList.remove('active');
+      });
+      tab.classList.add('active');
+      document.getElementById(tab.dataset.target).classList.add('active');
+    });
+  });
+  var VIDEOS = [
+    ['In a still frame, the ornate Victorian streetlamp stands solemnly, adorned with intricate ironwork and stained glass panels', [2.25, 19.20], [2.34, 23.58]],
+    ['an orange and a clock', [2.53, 20.94], [2.36, 25.23]],
+    ['Snow rocky mountains peaks canyon. snow blanketed rocky mountains surround and shadow deep canyons. the canyons twist and bend through the high elevated mountain peaks, pixel art', [2.45, 22.45], [2.30, 23.23]],
+    ['a truck and a bicycle', [2.04, 15.73], [2.31, 18.97]],
+    ['a clock', [2.28, 13.39], [2.42, 15.41]],
+    ['a purple bird', [2.56, 24.28], [2.42, 25.03]]
+  ];
+  var list = document.getElementById('vid-list');
+  VIDEOS.forEach(function (v, i) {
+    var n = i + 1;
+    var row = document.createElement('div');
+    row.className = 'vid-row';
+    row.innerHTML =
+      '<p class="prompt"><i>Prompt:</i> ' + v[0] + '</p>' +
+      '<video muted loop playsinline preload="none" poster="assets/videos/wan_' + n + '.jpg">' +
+      '<source src="assets/videos/wan_' + n + '.mp4" type="video/mp4"></video>' +
+      '<div class="labels"><span>Reference</span>' +
+      '<span>' + v[1][0].toFixed(2) + '&times; &middot; ' + v[1][1].toFixed(2) + ' dB</span>' +
+      '<span class="ours">' + v[2][0].toFixed(2) + '&times; &middot; ' + v[2][1].toFixed(2) + ' dB</span></div>';
+    list.appendChild(row);
+  });
+  var io = new IntersectionObserver(function (entries) {
+    entries.forEach(function (e) {
+      if (e.isIntersecting) { e.target.play().catch(function () {}); } else { e.target.pause(); }
+    });
+  }, { threshold: 0.25 });
+  list.querySelectorAll('video').forEach(function (v) { io.observe(v); });
+
+  document.querySelector('.copy').addEventListener('click', function () {
+    var btn = this;
+    navigator.clipboard.writeText(document.getElementById('bibtex-code').innerText).then(function () {
+      btn.textContent = 'Copied';
+      setTimeout(function () { btn.textContent = 'Copy'; }, 1500);
+    });
+  });
+</script>
+</body>
+</html>

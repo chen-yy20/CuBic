@@ -1,0 +1,40 @@
+#!/bin/bash
+set -x
+
+SCRIPT=${1:-$SCRIPT}
+shift || true
+
+if [ -z "$SCRIPT" ]; then
+    echo "Usage: bash infer.sh <script.py> [script args...]"
+    exit 1
+fi
+
+NNODES=${NNODES:-1}
+GPUS_PER_NODE=${GPUS_PER_NODE:-1}
+if [ "$GPUS_PER_NODE" -lt 1 ]; then
+    echo "GPUS_PER_NODE must be >= 1"
+    exit 1
+fi
+
+export MASTER_ADDR=$(scontrol show jobid=$SLURM_JOB_ID | tr '=' ' ' | grep BatchHost | awk '{print $2}')
+
+echo $MASTER_ADDR
+echo $MASTER_PORT
+export RANK=${RANK:-${SLURM_PROCID:-0}}
+export LOCAL_RANK=${LOCAL_RANK:-${SLURM_LOCALID:-0}}
+export NODE_RANK=${NODE_RANK:-$((RANK / GPUS_PER_NODE))}
+export WORLD_SIZE=${WORLD_SIZE:-$((NNODES * GPUS_PER_NODE))}
+
+export CUDA_DEVICE_MAX_CONNECTIONS=1
+
+PYTHON_BIN=${PYTHON_BIN:-$(command -v python || true)}
+if [ -z "$PYTHON_BIN" ]; then
+    PYTHON_BIN=$(command -v python3 || true)
+fi
+
+if [ -z "$PYTHON_BIN" ]; then
+    echo "Neither python nor python3 was found on PATH"
+    exit 127
+fi
+
+exec "$PYTHON_BIN" "$SCRIPT" "$@"
